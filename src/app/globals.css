@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --color-stone-900: #1a1a1a;
+  --color-stone-800: #2a2a2a;
+  --color-gold-500: #ffd700;
+  --color-gold-600: #daa520;
+  --color-dark-green: #0a1f0a;
+}
+
+:root {
+  --background: #0d0d0d;
+  --foreground: #f2f2f2;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', sans-serif;
+  overflow: hidden; /* No scrollbars in the game */
+  margin: 0;
+  padding: 0;
+  user-select: none; /* Prevent text selection to feel like an app */
+  -webkit-user-select: none;
+  touch-action: pan-x pan-y;
+}
+
+/* Torch flickering animation */
+@keyframes flicker {
+  0%   { opacity: 1; transform: scale(1); }
+  25%  { opacity: 0.8; transform: scale(0.98); }
+  50%  { opacity: 0.9; transform: scale(1.02); }
+  75%  { opacity: 0.7; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-flicker {
+  animation: flicker 2s infinite alternate;
+}
+
+/* Dust particles container */
+.particles {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: radial-gradient(circle at 50% 50%, rgba(200, 200, 200, 0.05) 1px, transparent 1px);
+  background-size: 100px 100px;
+  animation: dustMove 60s linear infinite;
+}
+
+@keyframes dustMove {
+  from { background-position: 0 0; }
+  to { background-position: 1000px 1000px; }
+}
+
+/* Custom Scrollbar hide for elements that need scroll (like leader book) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
