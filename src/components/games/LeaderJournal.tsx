@@ -1,6 +1,6 @@
 'use client';
 
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, Variants } from 'framer-motion';
 import { useState } from 'react';
 
 export default function LeaderJournal({ onClose }: { onClose: () => void }) {
@@ -20,7 +20,7 @@ export default function LeaderJournal({ onClose }: { onClose: () => void }) {
   };
 
   // تأثير تقليب صفحات الكتاب
-  const pageVariants = {
+  const pageVariants: Variants = {
     initial: (direction: number) => ({
       opacity: 0,
       rotateY: direction > 0 ? -90 : 90,
@@ -29,13 +29,19 @@ export default function LeaderJournal({ onClose }: { onClose: () => void }) {
     animate: {
       opacity: 1,
       rotateY: 0,
-      transition: { duration: 0.5, ease: 'easeInOut' },
+      transition: {
+        duration: 0.5,
+        ease: [0.42, 0, 0.58, 1],
+      },
     },
     exit: (direction: number) => ({
       opacity: 0,
       rotateY: direction > 0 ? 90 : -90,
       transformOrigin: 'right center',
-      transition: { duration: 0.5, ease: 'easeInOut' },
+      transition: {
+        duration: 0.5,
+        ease: [0.42, 0, 0.58, 1],
+      },
     }),
   };
 

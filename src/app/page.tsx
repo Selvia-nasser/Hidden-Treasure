@@ -23,7 +23,7 @@ export default function Home() {
   <motion.div
     initial={{ opacity: 0, y: 30 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 1.5, ease: "liner" }}
+    transition={{ duration: 1.5, ease: "linear" }}
     className="space-y-6"
   >
     <h1 className="text-4xl md:text-5xl font-extrabold text-gold-500 drop-shadow-[0_0_15px_rgba(255,215,0,0.5)]">
