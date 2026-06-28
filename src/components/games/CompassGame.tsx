@@ -1,84 +1,161 @@
 'use client';
 
 import { useGameStore } from '@/store/gameStore';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Shield, Zap } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
 
-export default function ConnectionGame({ onClose }: { onClose: () => void }) {
-  // 3: مصدر، 4: هدف (درع)، 1: خط، 2: زاوية
-  const [grid, setGrid] = useState([
-    { id: 0, type: 3, rotation: 0 }, { id: 1, type: 1, rotation: 0 }, { id: 2, type: 0, rotation: 0 },
-    { id: 3, type: 0, rotation: 0 }, { id: 4, type: 2, rotation: 90 }, { id: 5, type: 0, rotation: 0 },
-    { id: 6, type: 0, rotation: 0 }, { id: 7, type: 1, rotation: 90 }, { id: 8, type: 4, rotation: 0 },
+export default function CompassGame({ onClose }: { onClose: () => void }) {
+  const [pieces, setPieces] = useState([
+    { id: 1, placed: false, x: -100, y: 150 },
+    { id: 2, placed: false, x: 100, y: 120 },
+    { id: 3, placed: false, x: -80, y: -130 },
+    { id: 4, placed: false, x: 120, y: -100 },
   ]);
-  
+  const [spinning, setSpinning] = useState(false);
+  const [rotation, setRotation] = useState(0);
   const [won, setWon] = useState(false);
+  
   const { completeGame } = useGameStore();
+  const reqRef = useRef<number | null>(null);
 
-  const rotatePiece = (id: number) => {
-    if (won) return;
-    setGrid(prev => prev.map(p => 
-      p.id === id ? { ...p, rotation: (p.rotation + 90) % 360 } : p
-    ));
-  };
+  const allPlaced = pieces.every(p => p.placed);
 
   useEffect(() => {
-    // شرط الفوز بناءً على الزوايا المطلوبة
-    if (grid[1].rotation === 90 && grid[4].rotation === 180 && grid[7].rotation === 0) {
-      setWon(true);
-      completeGame?.('illumination', 7);
+    if (allPlaced && !spinning && !won) {
+      setTimeout(() => setSpinning(true), 500);
     }
-  }, [grid, completeGame]);
+  }, [allPlaced, spinning, won]);
+
+  useEffect(() => {
+    if (spinning) {
+      let lastTime = performance.now();
+      const spin = (time: number) => {
+        const delta = time - lastTime;
+        lastTime = time;
+        // Speed equivalent to 12 degrees per 60fps frame
+        const speedPerMs = 10 / (1000 / 60);
+        setRotation(r => (r + delta * speedPerMs) % 360);
+        reqRef.current = requestAnimationFrame(spin);
+      };
+      reqRef.current = requestAnimationFrame(spin);
+    }
+    return () => {
+      if (reqRef.current) cancelAnimationFrame(reqRef.current);
+    };
+  }, [spinning]);
+
+  const handleStop = () => {
+    if (!spinning) return;
+    setSpinning(false);
+    if (reqRef.current) cancelAnimationFrame(reqRef.current);
+    
+    // North is around 0 (or 360). Give a margin of 15 degrees.
+    if (rotation < 15 || rotation > 345) {
+      setWon(true);
+      setTimeout(() => {
+        completeGame('compass', 1);
+      }, 3000);
+    } else {
+      // Failed, resume spinning after a short penalty
+      setTimeout(() => setSpinning(true), 500);
+    }
+  };
+
+  const handleDragEnd = (id: number, info: any) => {
+    // A simple logic: if user drags it at all, we just snap it to place for ease of use on mobile.
+    // Real implementation would check coordinates, but for a smooth experience without complex bounds mapping:
+    setPieces(prev => prev.map(p => p.id === id ? { ...p, placed: true } : p));
+  };
 
   return (
-    <div className="w-full h-full flex items-center justify-center p-4 bg-stone-950 overflow-hidden">
-      <AnimatePresence mode="wait">
-        {!won ? (
-          <motion.div key="game" exit={{ opacity: 0 }} className="grid grid-cols-3 gap-3">
-            {grid.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => rotatePiece(p.id)}
-                className={`w-20 h-20 rounded-xl flex items-center justify-center border-2 transition-all active:scale-95
-                  ${won ? 'border-amber-500 bg-amber-900/20' : 'bg-stone-800 border-stone-700'}`}
+    <div className="w-full h-full flex flex-col items-center justify-center p-4">
+      {!won ? (
+        <>
+          <h2 className="text-xl font-bold text-gold-500 mb-8">
+            {!allPlaced ? 'أعد تركيب البوصلة' : 'أوقف المؤشر عند الشمال (N)'}
+          </h2>
+
+          <div className="relative w-64 h-64 bg-stone-800/50 rounded-full border-4 border-dashed border-stone-600 flex items-center justify-center">
+            {/* Center Pin */}
+            <div className="absolute w-4 h-4 bg-gold-600 rounded-full z-20 shadow-lg" />
+            
+            {/* The assembled background */}
+            {allPlaced && (
+              <div className="absolute inset-0 rounded-full border-8 border-[#5c4033] bg-[#2a1e16] flex items-center justify-center shadow-[inset_0_0_30px_rgba(0,0,0,0.8)]">
+                <div className="absolute top-2 w-12 h-12 bg-red-900/40 rounded-full blur-md" /> {/* North Highlight */}
+                <span className="absolute top-2 text-red-500 font-extrabold text-2xl drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]">N</span>
+                <span className="absolute bottom-3 text-stone-600 font-bold">S</span>
+                <span className="absolute right-3 text-stone-600 font-bold">E</span>
+                <span className="absolute left-3 text-stone-600 font-bold">W</span>
+                
+                {/* 360 ticks background */}
+                <div className="absolute inset-0 rounded-full bg-[url('https://www.transparenttextures.com/patterns/black-scales.png')] opacity-30 mix-blend-overlay" />
+              </div>
+            )}
+
+            {/* The needle */}
+            {allPlaced && (
+              <motion.div 
+                className="absolute w-4 h-56 z-10"
+                style={{ rotate: rotation }}
               >
-                <motion.div animate={{ rotate: p.rotation }}>
-                  {p.type === 3 && <Zap className="text-yellow-400" size={32} />}
-                  {p.type === 4 && <Shield className="text-amber-500" size={32} />}
-                  {p.type === 1 && <div className="w-12 h-2 bg-stone-500 rounded-full" />}
-                  {p.type === 2 && <div className="w-10 h-10 border-t-4 border-l-4 border-stone-500 rounded-tl-xl" />}
+                <div className="w-full h-1/2 flex justify-center">
+                  {/* North pointer (Red) */}
+                  <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-b-[112px] border-b-red-600 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
+                </div>
+                <div className="w-full h-1/2 flex justify-center">
+                  {/* South pointer (White) */}
+                  <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[112px] border-t-stone-200 drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]" />
+                </div>
+              </motion.div>
+            )}
+
+            {/* The Pieces */}
+            {!allPlaced && pieces.map((p, i) => {
+              if (p.placed) return null;
+              return (
+                <motion.div
+                  key={p.id}
+                  drag
+                  dragSnapToOrigin={false}
+                  onDragEnd={(e, info) => handleDragEnd(p.id, info)}
+                  initial={{ x: p.x, y: p.y }}
+                  className="absolute w-24 h-24 bg-stone-700 border-2 border-stone-500 rounded-lg flex items-center justify-center cursor-grab active:cursor-grabbing shadow-xl"
+                >
+                  <span className="text-stone-400 opacity-50">قطعة {p.id}</span>
                 </motion.div>
-              </button>
-            ))}
-          </motion.div>
-        ) : (
-          <motion.div 
-            key="win"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-stone-900 p-8 rounded-xl shadow-2xl w-full max-w-sm text-center border-2 border-[#cbb382] relative"
-          >
-            <div className="absolute inset-0 border-2 border-[#cbb382] m-2 pointer-events-none" />
-            
-            <h3 className="text-2xl font-bold text-[#ead8b0] mb-4">🛡️ لقد استعدت الدرع! أحسنت</h3>
-            <p className="text-[#d7be8f] mb-6 font-bold text-lg">+2 Points Bonus</p>
-            
-            <div className="text-6xl font-mono text-amber-500 tracking-widest bg-stone-950 px-8 py-6 rounded-xl font-bold shadow-inner border-4 border-[#5c4033]">
-              7
-            </div>
-            
-            <p className="mt-6 text-sm text-stone-400 font-bold">هذا هو الرقم الخاص بلعبة الدرع، احتفظ به جيداً.</p>
-            
-            <button 
-              onClick={onClose} 
-              className="mt-8 px-8 py-3 bg-[#5c4033] text-[#e6d0a7] rounded font-bold shadow-lg hover:bg-[#4a3424] transition-colors"
+              );
+            })}
+          </div>
+
+          {spinning && (
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={handleStop}
+              className="mt-12 px-8 py-4 bg-red-800 text-white font-bold rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)]"
             >
-              أكمل المغامرة
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              إيقاف!
+            </motion.button>
+          )}
+        </>
+      ) : (
+        <motion.div 
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="text-center bg-[#e6d0a7] p-8 rounded-sm shadow-2xl relative"
+        >
+          <div className="absolute inset-0 border-2 border-[#cbb382] m-2 pointer-events-none" />
+          <h3 className="text-2xl font-bold text-[#5c4033] mb-4">🧭 لقد أصلحت البوصلة!  احسنت</h3>
+          <p className="text-[#8b6348] mb-6 font-bold text-lg">+2 Points Bonus</p>
+          <div className="text-6xl font-mono text-gold-600 tracking-widest bg-stone-900 px-8 py-6 rounded-xl font-bold shadow-inner border-4 border-[#5c4033]">
+            1
+          </div>
+          <p className="mt-6 text-sm text-stone-500 font-bold">هذا هو الرقم الخاص بلعبة البوصلة  احتفظ به.</p>
+          <button onClick={onClose} className="mt-8 px-8 py-3 bg-[#5c4033] text-[#e6d0a7] rounded font-bold shadow-lg hover:bg-[#4a3424] transition-colors">
+            أكمل المغامرة
+          </button>
+        </motion.div>
+      )}
     </div>
   );
 }
