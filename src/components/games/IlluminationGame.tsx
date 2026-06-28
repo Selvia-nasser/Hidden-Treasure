@@ -1,79 +1,63 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Zap, RotateCw } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
+import { motion } from 'framer-motion';
+import { useState } from 'react';
 
-// 0: مسار فارغ، 1: خط مستقيم، 2: زاوية، 3: مصدر، 4: هدف
-const INITIAL_GRID = [
-  [3, 1, 0],
-  [0, 2, 0],
-  [0, 1, 4],
-];
+// أيقونات المعبد (يمكنك تغييرها)
+const ICONS = ['🛡️', '⚡', '🗝️', '🧭'];
+const CARDS = [...ICONS, ...ICONS].sort(() => Math.random() - 0.5);
 
-export default function ConnectionGame({ onClose }: { onClose: () => void }) {
-  const [grid, setGrid] = useState([
-    { id: 0, type: 3, rotation: 0 }, { id: 1, type: 1, rotation: 0 }, { id: 2, type: 0, rotation: 0 },
-    { id: 3, type: 0, rotation: 0 }, { id: 4, type: 2, rotation: 90 }, { id: 5, type: 0, rotation: 0 },
-    { id: 6, type: 0, rotation: 0 }, { id: 7, type: 1, rotation: 90 }, { id: 8, type: 4, rotation: 0 },
-  ]);
+export default function MemoryGame({ onClose }: { onClose: () => void }) {
+  const [opened, setOpened] = useState<number[]>([]);
+  const [solved, setSolved] = useState<number[]>([]);
   const [won, setWon] = useState(false);
   const { completeGame } = useGameStore();
 
-  const rotatePiece = (id: number) => {
-    if (won) return;
-    const newGrid = grid.map(p => 
-      p.id === id ? { ...p, rotation: (p.rotation + 90) % 360 } : p
-    );
-    setGrid(newGrid);
+  const handleCardClick = (index: number) => {
+    if (opened.length === 2 || solved.includes(index) || opened.includes(index)) return;
+    
+    const newOpened = [...opened, index];
+    setOpened(newOpened);
+
+    if (newOpened.length === 2) {
+      if (CARDS[newOpened[0]] === CARDS[newOpened[1]]) {
+        setSolved([...solved, ...newOpened]);
+        setOpened([]);
+        if (solved.length + 2 === CARDS.length) {
+          setWon(true);
+          completeGame?.('illumination', 7);
+        }
+      } else {
+        setTimeout(() => setOpened([]), 1000);
+      }
+    }
   };
 
-  // التحقق من الفوز (بسيط: يجب أن تكون الزوايا والخطوط في اتجاهات محددة)
-  useEffect(() => {
-    const isSolved = 
-      grid[1].rotation === 90 && // القطعة 1
-      grid[4].rotation === 180 && // القطعة 4
-      grid[7].rotation === 0;   // القطعة 7
-    
-    if (isSolved) {
-      setWon(true);
-      setTimeout(() => completeGame?.('illumination', 7), 1500);
-    }
-  }, [grid, completeGame]);
-
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-stone-950 text-stone-200">
+    <div className="flex flex-col items-center justify-center h-full bg-stone-950 p-4">
       {!won ? (
-        <div className="grid grid-cols-3 gap-3">
-          {grid.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => rotatePiece(p.id)}
-              className="w-20 h-20 bg-stone-800 rounded-xl flex items-center justify-center border-2 border-stone-700 active:scale-95 transition-all"
+        <div className="grid grid-cols-4 gap-3">
+          {CARDS.map((icon, i) => (
+            <motion.button
+              key={i}
+              onClick={() => handleCardClick(i)}
+              className="w-16 h-20 bg-stone-800 rounded-lg border-2 border-stone-700 flex items-center justify-center text-2xl"
+              animate={{ rotateY: solved.includes(i) || opened.includes(i) ? 0 : 180 }}
             >
-              <motion.div animate={{ rotate: p.rotation }}>
-                {p.type === 3 && <Zap className="text-yellow-400" size={32} />}
-                {p.type === 4 && <Shield className="text-amber-500" size={32} />}
-                {p.type === 1 && <div className="w-12 h-2 bg-stone-500 rounded-full" />}
-                {p.type === 2 && <div className="w-10 h-10 border-t-4 border-l-4 border-stone-500 rounded-tl-xl" />}
-              </motion.div>
-            </button>
+              {(solved.includes(i) || opened.includes(i)) ? icon : '?'}
+            </motion.button>
           ))}
         </div>
       ) : (
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-          className="text-center p-8 bg-stone-900 border-2 border-amber-500 rounded-3xl"
-        >
-          <Shield size={80} className="text-amber-500 mx-auto mb-4 animate-pulse" />
-          <h2 className="text-3xl font-black text-white mb-2">مبروك يا أبطال!</h2>
-          <p className="text-stone-400 mb-6">لقد وصلتم الطاقة للدرع بنجاح</p>
-          <div className="text-6xl font-black text-amber-500 mb-8">7</div>
-          <button onClick={onClose} className="px-8 py-3 bg-amber-600 rounded-xl font-bold text-white">العودة للمعبد</button>
-        </motion.div>
+        <div className="bg-stone-900 p-8 rounded-xl text-center border-2 border-[#cbb382]">
+            <h3 className="text-2xl font-bold text-[#ead8b0] mb-4">🛡️لقد حصلت على الدرع بسبب ذاكرتك القوية! أحسنت</h3>
+            <p className="text-[#d7be8f] mb-6 font-bold text-lg">+2 Points Bonus</p>
+            <div className="text-6xl font-mono text-amber-500 tracking-widest bg-stone-950 px-8 py-6 rounded-xl font-bold border-4 border-[#5c4033]">7</div>
+            <p className="mt-6 text-sm text-stone-400 font-bold">هذا هو الرقم الخاص بالمعبد، احتفظ به.</p>
+            <button onClick={onClose} className="mt-8 px-8 py-3 bg-[#5c4033] text-[#e6d0a7] rounded font-bold">أكمل المغامرة</button>
+        </div>
       )}
-      <p className="mt-8 text-stone-600 text-sm">اضغط على القطع لتدويرها وتوصيل المسار</p>
     </div>
   );
 }
