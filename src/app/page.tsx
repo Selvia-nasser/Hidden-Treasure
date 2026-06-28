@@ -15,7 +15,7 @@ export default function Home() {
       {/* Fog effect using gradients */}
       <motion.div 
         animate={{ y: [0, -20, 0], opacity: [0.3, 0.6, 0.3] }}
-        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+        transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
         className="absolute bottom-0 w-full h-1/2 bg-gradient-to-t from-stone-900/80 to-transparent pointer-events-none"
       />
 
@@ -23,7 +23,7 @@ export default function Home() {
   <motion.div
     initial={{ opacity: 0, y: 30 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 1.5, ease: "easeOut" }}
+    transition={{ duration: 1.5, ease: "liner" }}
     className="space-y-6"
   >
     <h1 className="text-4xl md:text-5xl font-extrabold text-gold-500 drop-shadow-[0_0_15px_rgba(255,215,0,0.5)]">
