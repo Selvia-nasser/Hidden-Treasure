@@ -2,15 +2,12 @@
 
 import { useGameStore } from '@/store/gameStore';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Shield, Heart, RotateCcw } from 'lucide-react';
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { Heart, RotateCcw, Shield } from 'lucide-react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
-// ===== تعريف المتاهة =====
-// كل خلية: 0 = ممر، 1 = حيط، 2 = بداية، 3 = نهاية (الدرع)
-const MAZE_COLS = 11;
-const MAZE_ROWS = 15;
-
-const MAZE_GRID = [
+// ===== المتاهة =====
+// 0=ممر  1=حيطة  2=بداية  3=نهاية
+const GRID = [
   [1,1,1,1,1,1,1,1,1,1,1],
   [1,2,0,0,0,1,0,0,0,0,1],
   [1,1,1,1,0,1,0,1,1,0,1],
@@ -27,341 +24,291 @@ const MAZE_GRID = [
   [1,0,0,0,0,0,1,0,0,3,1],
   [1,1,1,1,1,1,1,1,1,1,1],
 ];
-
-const START_COL = 1;
-const START_ROW = 1;
+const ROWS = GRID.length;
+const COLS = GRID[0].length;
 const MAX_LIVES = 3;
+
+// موضع البداية
+const START = { row: 1, col: 1 };
 
 export default function MazeGame({ onClose }: { onClose: () => void }) {
   const { completeGame } = useGameStore();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const animFrameRef = useRef<number>(0);
-  const stateRef = useRef({
-    playerX: 0,
-    playerY: 0,
-    lives: MAX_LIVES,
-    won: false,
-    cellSize: 0,
-    offsetX: 0,
-    offsetY: 0,
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // أبعاد الـ SVG الفعلية
+  const [svgSize, setSvgSize] = useState({ w: 330, h: 480 });
+
+  useLayoutEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0) setSvgSize({ w: r.width, h: r.height });
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  const cellW = svgSize.w / COLS;
+  const cellH = svgSize.h / ROWS;
+
+  // موضع اللاعب بالـ pixel داخل الـ SVG
+  const [player, setPlayer] = useState({
+    x: START.col * cellW + cellW / 2,
+    y: START.row * cellH + cellH / 2,
   });
+
+  // reset لما يتغير حجم الـ SVG
+  const playerRef = useRef(player);
+  playerRef.current = player;
 
   const [lives, setLives] = useState(MAX_LIVES);
   const [won, setWon] = useState(false);
   const [dead, setDead] = useState(false);
   const [started, setStarted] = useState(false);
-  const [hitFlash, setHitFlash] = useState(false);
-
-  const getCellSize = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return 30;
-    return Math.floor(Math.min(canvas.width / MAZE_COLS, canvas.height / MAZE_ROWS));
-  }, []);
+  const [flash, setFlash] = useState(false);
+  const livesRef = useRef(MAX_LIVES);
 
   const resetPlayer = useCallback(() => {
-    const cellSize = stateRef.current.cellSize;
-    stateRef.current.playerX = START_COL * cellSize + cellSize / 2;
-    stateRef.current.playerY = START_ROW * cellSize + cellSize / 2;
-  }, []);
+    setPlayer({
+      x: START.col * cellW + cellW / 2,
+      y: START.row * cellH + cellH / 2,
+    });
+  }, [cellW, cellH]);
 
-  const initCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
-    const cellSize = getCellSize();
-    stateRef.current.cellSize = cellSize;
-    stateRef.current.offsetX = (canvas.width - cellSize * MAZE_COLS) / 2;
-    stateRef.current.offsetY = (canvas.height - cellSize * MAZE_ROWS) / 2;
-    resetPlayer();
-  }, [getCellSize, resetPlayer]);
+  // تحويل pixel → خلية
+  const pixelToCell = (px: number, py: number) => ({
+    col: Math.floor(px / cellW),
+    row: Math.floor(py / cellH),
+  });
 
-  const drawFrame = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const { playerX, playerY, cellSize, offsetX, offsetY } = stateRef.current;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // خلفية سوداء
-    ctx.fillStyle = '#0a0806';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // رسم المتاهة
-    for (let row = 0; row < MAZE_ROWS; row++) {
-      for (let col = 0; col < MAZE_COLS; col++) {
-        const cell = MAZE_GRID[row][col];
-        const x = offsetX + col * cellSize;
-        const y = offsetY + row * cellSize;
-
-        if (cell === 1) {
-          // حيط - لون بني داكن
-          ctx.fillStyle = '#2a1a0a';
-          ctx.fillRect(x, y, cellSize, cellSize);
-          // تفاصيل الحيط
-          ctx.fillStyle = '#3d2810';
-          ctx.fillRect(x + 1, y + 1, cellSize - 2, 3);
-          ctx.fillRect(x + 1, y + cellSize - 4, cellSize - 2, 3);
-        } else if (cell === 3) {
-          // الهدف - الدرع
-          ctx.fillStyle = '#0a0806';
-          ctx.fillRect(x, y, cellSize, cellSize);
-          ctx.save();
-          ctx.shadowColor = '#f59e0b';
-          ctx.shadowBlur = 15;
-          ctx.fillStyle = '#f59e0b';
-          ctx.font = `${cellSize * 0.7}px serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('🛡️', x + cellSize / 2, y + cellSize / 2);
-          ctx.restore();
-        }
-      }
-    }
-
-    // تأثير الضوء حول اللاعب
-    const px = offsetX + playerX;
-    const py = offsetY + playerY;
-    const lightRadius = cellSize * 2.5;
-    const gradient = ctx.createRadialGradient(px, py, 0, px, py, lightRadius);
-    gradient.addColorStop(0, 'rgba(0,0,0,0)');
-    gradient.addColorStop(0.4, 'rgba(0,0,0,0)');
-    gradient.addColorStop(1, 'rgba(0,0,0,0.97)');
-
-    // ظلام كامل أولاً
-    ctx.fillStyle = 'rgba(0,0,0,0.97)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // ثقب الضوء
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    const lightGrad = ctx.createRadialGradient(px, py, 0, px, py, lightRadius);
-    lightGrad.addColorStop(0, 'rgba(0,0,0,1)');
-    lightGrad.addColorStop(0.6, 'rgba(0,0,0,0.9)');
-    lightGrad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = lightGrad;
-    ctx.beginPath();
-    ctx.arc(px, py, lightRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    // رسم اللاعب (نقطة ضوء)
-    ctx.save();
-    ctx.shadowColor = '#fbbf24';
-    ctx.shadowBlur = 20;
-    const playerGrad = ctx.createRadialGradient(px, py, 0, px, py, cellSize * 0.35);
-    playerGrad.addColorStop(0, '#fff8e1');
-    playerGrad.addColorStop(0.5, '#fbbf24');
-    playerGrad.addColorStop(1, 'rgba(251,191,36,0)');
-    ctx.fillStyle = playerGrad;
-    ctx.beginPath();
-    ctx.arc(px, py, cellSize * 0.35, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    animFrameRef.current = requestAnimationFrame(drawFrame);
-  }, []);
-
-  useEffect(() => {
-    initCanvas();
-    animFrameRef.current = requestAnimationFrame(drawFrame);
-    return () => cancelAnimationFrame(animFrameRef.current);
-  }, [initCanvas, drawFrame]);
-
-  const getPointerPos = (clientX: number, clientY: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: (clientX - rect.left) * (canvas.width / rect.width),
-      y: (clientY - rect.top) * (canvas.height / rect.height),
-    };
-  };
-
-  const isWall = (px: number, py: number, cellSize: number, offsetX: number, offsetY: number) => {
-    const margin = cellSize * 0.3;
-    const corners = [
+  const isWall = (px: number, py: number) => {
+    const margin = Math.min(cellW, cellH) * 0.28;
+    const pts = [
       { x: px - margin, y: py - margin },
       { x: px + margin, y: py - margin },
       { x: px - margin, y: py + margin },
       { x: px + margin, y: py + margin },
     ];
-    for (const pt of corners) {
-      const col = Math.floor((pt.x - offsetX) / cellSize);
-      const row = Math.floor((pt.y - offsetY) / cellSize);
-      if (row < 0 || row >= MAZE_ROWS || col < 0 || col >= MAZE_COLS) return true;
-      if (MAZE_GRID[row][col] === 1) return true;
+    return pts.some(pt => {
+      const { col, row } = pixelToCell(pt.x, pt.y);
+      if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return true;
+      return GRID[row][col] === 1;
+    });
+  };
+
+  const isGoal = (px: number, py: number) => {
+    const { col, row } = pixelToCell(px, py);
+    return row >= 0 && row < ROWS && col >= 0 && col < COLS && GRID[row][col] === 3;
+  };
+
+  // تحويل موضع اللمس/الماوس لـ SVG coordinates
+  const toSVGCoords = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) * (svgSize.w / rect.width),
+      y: (clientY - rect.top) * (svgSize.h / rect.height),
+    };
+  };
+
+  const handleHit = useCallback(() => {
+    const newLives = livesRef.current - 1;
+    livesRef.current = newLives;
+    setLives(newLives);
+    setFlash(true);
+    setTimeout(() => setFlash(false), 350);
+    if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+    if (newLives <= 0) {
+      setDead(true);
+    } else {
+      resetPlayer();
     }
-    return false;
-  };
+  }, [resetPlayer]);
 
-  const checkWin = (px: number, py: number, cellSize: number, offsetX: number, offsetY: number) => {
-    const col = Math.floor((px - offsetX) / cellSize);
-    const row = Math.floor((py - offsetY) / cellSize);
-    return row >= 0 && row < MAZE_ROWS && col >= 0 && col < MAZE_COLS && MAZE_GRID[row][col] === 3;
-  };
+  const move = useCallback((clientX: number, clientY: number) => {
+    if (won || dead) return;
+    const coords = toSVGCoords(clientX, clientY);
+    if (!coords) return;
 
-  const handleMove = useCallback((clientX: number, clientY: number) => {
-    const s = stateRef.current;
-    if (s.won || dead || !started) return;
+    const { x, y } = coords;
 
-    const pos = getPointerPos(clientX, clientY);
-    if (!pos) return;
+    // حدود الـ SVG
+    if (x < 0 || y < 0 || x > svgSize.w || y > svgSize.h) return;
 
-    const newX = pos.x - s.offsetX;
-    const newY = pos.y - s.offsetY;
-
-    if (checkWin(newX, newY, s.cellSize, 0, 0)) {
-      s.won = true;
-      s.playerX = newX;
-      s.playerY = newY;
+    if (isGoal(x, y)) {
+      setPlayer({ x, y });
       setWon(true);
-      setTimeout(() => completeGame?.('maze', 7), 1500);
+      setTimeout(() => completeGame?.('illumination', 7), 1200);
       return;
     }
 
-    if (isWall(newX, newY, s.cellSize, 0, 0)) {
-      const newLives = s.lives - 1;
-      s.lives = newLives;
-      setLives(newLives);
-      setHitFlash(true);
-      setTimeout(() => setHitFlash(false), 400);
-      if (typeof window !== 'undefined' && window.navigator.vibrate) {
-        window.navigator.vibrate([100, 50, 100]);
-      }
-      if (newLives <= 0) {
-        setDead(true);
-      } else {
-        resetPlayer();
-      }
+    if (isWall(x, y)) {
+      handleHit();
       return;
     }
 
-    s.playerX = newX;
-    s.playerY = newY;
-  }, [dead, started, resetPlayer, completeGame]);
+    setPlayer({ x, y });
+  }, [won, dead, svgSize, handleHit, completeGame]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
-    const touch = e.touches[0];
-    if (touch) handleMove(touch.clientX, touch.clientY);
-  }, [handleMove]);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === 'mouse') handleMove(e.clientX, e.clientY);
-  }, [handleMove]);
-
-  const handleStart = useCallback((e: React.TouchEvent | React.PointerEvent) => {
     if (!started) setStarted(true);
-    let clientX: number, clientY: number;
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = (e as React.PointerEvent).clientX;
-      clientY = (e as React.PointerEvent).clientY;
-    }
-    handleMove(clientX, clientY);
-  }, [started, handleMove]);
+    const t = e.touches[0];
+    if (t) move(t.clientX, t.clientY);
+  }, [started, move]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!started) setStarted(true);
+    const t = e.touches[0];
+    if (t) move(t.clientX, t.clientY);
+  }, [started, move]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!started) setStarted(true);
+    move(e.clientX, e.clientY);
+  }, [started, move]);
 
   const restart = () => {
-    stateRef.current.lives = MAX_LIVES;
-    stateRef.current.won = false;
-    resetPlayer();
+    livesRef.current = MAX_LIVES;
     setLives(MAX_LIVES);
     setWon(false);
     setDead(false);
     setStarted(false);
+    setFlash(false);
+    resetPlayer();
   };
+
+  const LIGHT_R = Math.min(cellW, cellH) * 2.2;
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center p-3 select-none">
       <AnimatePresence mode="wait">
         {!won && !dead ? (
-          <motion.div
-            key="game"
-            className="w-full max-w-sm flex flex-col gap-2"
-            exit={{ opacity: 0 }}
-          >
-            {/* الـ Header */}
+          <motion.div key="game" className="w-full max-w-sm flex flex-col gap-2" exit={{ opacity: 0 }}>
+
+            {/* شريط الأرواح */}
             <div className="flex items-center justify-between px-1">
               <div className="flex gap-1">
                 {Array.from({ length: MAX_LIVES }).map((_, i) => (
-                  <Heart
-                    key={i}
-                    size={20}
-                    className={`transition-all duration-300 ${i < lives ? 'text-red-500 fill-red-500' : 'text-stone-700'}`}
-                  />
+                  <Heart key={i} size={20}
+                    className={`transition-all duration-300 ${i < lives ? 'text-red-500 fill-red-500' : 'text-stone-700'}`} />
                 ))}
               </div>
               <span className="text-amber-500/70 text-xs font-bold">أوصل للدرع 🛡️</span>
             </div>
 
-            {/* الـ Canvas */}
+            {/* المتاهة */}
             <div
-              ref={containerRef}
-              className={`relative w-full rounded-2xl overflow-hidden border-2 transition-all duration-100 ${hitFlash ? 'border-red-500' : 'border-stone-800'}`}
-              style={{ height: '480px', background: '#0a0806' }}
+              className={`relative rounded-2xl overflow-hidden border-2 transition-colors duration-150 ${flash ? 'border-red-500' : 'border-stone-800'}`}
+              style={{ background: '#0a0806' }}
             >
-              <canvas
-                ref={canvasRef}
-                className="w-full h-full"
-                onPointerMove={handlePointerMove}
-                onPointerDown={handleStart}
+              <svg
+                ref={svgRef}
+                width="100%"
+                height="480"
+                viewBox={`0 0 ${svgSize.w} ${svgSize.h}`}
+                style={{ display: 'block', touchAction: 'none', cursor: 'none' }}
+                onMouseMove={handleMouseMove}
                 onTouchMove={handleTouchMove}
-                onTouchStart={handleStart}
-                style={{ touchAction: 'none', display: 'block' }}
-              />
+                onTouchStart={handleTouchStart}
+              >
+                <defs>
+                  {/* قناع الضوء */}
+                  <radialGradient id="light" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="white" stopOpacity="1" />
+                    <stop offset="55%" stopColor="white" stopOpacity="0.85" />
+                    <stop offset="100%" stopColor="white" stopOpacity="0" />
+                  </radialGradient>
+                  <mask id="lightMask">
+                    <rect width={svgSize.w} height={svgSize.h} fill="black" />
+                    <ellipse
+                      cx={player.x} cy={player.y}
+                      rx={LIGHT_R} ry={LIGHT_R}
+                      fill="url(#light)"
+                    />
+                  </mask>
+                </defs>
+
+                {/* خلفية سوداء */}
+                <rect width={svgSize.w} height={svgSize.h} fill="#0a0806" />
+
+                {/* خلايا المتاهة - الكل مرئي */}
+                {GRID.map((row, ri) =>
+                  row.map((cell, ci) => {
+                    const x = ci * cellW;
+                    const y = ri * cellH;
+                    if (cell === 1) return (
+                      <g key={`${ri}-${ci}`}>
+                        <rect x={x} y={y} width={cellW} height={cellH} fill="#1e0f04" />
+                        <rect x={x+1} y={y+1} width={cellW-2} height={3} fill="#2d1a09" />
+                        <rect x={x+1} y={y+cellH-4} width={cellW-2} height={3} fill="#110800" />
+                      </g>
+                    );
+                    if (cell === 3) return (
+                      <text key={`${ri}-${ci}`}
+                        x={x + cellW / 2} y={y + cellH / 2}
+                        textAnchor="middle" dominantBaseline="middle"
+                        fontSize={cellW * 0.65}
+                      >🛡️</text>
+                    );
+                    return null;
+                  })
+                )}
+
+                {/* طبقة الظلام مع ثقب الضوء */}
+                <rect
+                  width={svgSize.w} height={svgSize.h}
+                  fill="rgba(0,0,0,0.97)"
+                  mask="url(#lightMask)"
+                />
+
+                {/* اللاعب - كرة ضوء */}
+                <circle cx={player.x} cy={player.y} r={cellW * 0.28} fill="#fff8e1" opacity="0.95" />
+                <circle cx={player.x} cy={player.y} r={cellW * 0.18} fill="white" />
+              </svg>
+
+              {/* وميض أحمر */}
+              {flash && (
+                <div className="absolute inset-0 bg-red-500/25 pointer-events-none rounded-2xl" />
+              )}
 
               {/* شاشة البداية */}
               {!started && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-4">
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 gap-3 rounded-2xl">
                   <motion.div
-                    animate={{ scale: [1, 1.1, 1] }}
-                    transition={{ repeat: Infinity, duration: 1.5 }}
+                    animate={{ scale: [1, 1.15, 1] }}
+                    transition={{ repeat: Infinity, duration: 1.4 }}
                     className="text-5xl"
-                  >
-                    🔦
-                  </motion.div>
+                  >🔦</motion.div>
                   <p className="text-amber-400 font-bold text-center text-sm px-8 leading-relaxed">
-                    حرّك إصبعك داخل المتاهة{'\n'}وصل للدرع بدون ما تلمس الحيطان
+                    حرّك إصبعك في الممرات{'\n'}وأوصل للدرع بدون ما تلمس الحيطان
                   </p>
-                  <p className="text-stone-500 text-xs">عندك 3 أرواح</p>
+                  <p className="text-stone-500 text-xs">عندك 3 أرواح ❤️</p>
                 </div>
-              )}
-
-              {hitFlash && (
-                <div className="absolute inset-0 bg-red-500/20 pointer-events-none rounded-2xl" />
               )}
             </div>
           </motion.div>
+
         ) : dead ? (
-          <motion.div
-            key="dead"
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
+          <motion.div key="dead"
+            initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
             className="flex flex-col items-center bg-stone-900 border-2 border-red-900 rounded-3xl p-8 max-w-sm w-full text-center gap-4"
           >
             <div className="text-5xl">💀</div>
             <h2 className="text-xl font-black text-red-400">خسرت الأرواح كلها!</h2>
             <p className="text-stone-400 text-sm">الظلام ابتلعك… حاول تاني</p>
-            <button
-              onClick={restart}
+            <button onClick={restart}
               className="flex items-center gap-2 px-6 py-3 bg-stone-800 hover:bg-stone-700 text-amber-400 font-bold rounded-xl border border-stone-700 transition-all active:scale-95"
             >
-              <RotateCcw size={18} />
-              العب تاني
+              <RotateCcw size={18} /> العب تاني
             </button>
           </motion.div>
+
         ) : (
-          <motion.div
-            key="win"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
+          <motion.div key="win"
+            initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
             className="flex flex-col items-center bg-stone-900 p-8 rounded-3xl shadow-[0_0_50px_rgba(251,191,36,0.2)] border-2 border-amber-500/50 max-w-sm w-full text-center"
           >
             <div className="relative mb-4">
@@ -376,8 +323,7 @@ export default function MazeGame({ onClose }: { onClose: () => void }) {
             <p className="text-stone-400 text-sm mb-6 leading-relaxed">
               شققت طريقك في الظلام ووصلت للدرع!
             </p>
-            <button
-              onClick={onClose}
+            <button onClick={onClose}
               className="w-full py-3 bg-stone-800 hover:bg-stone-700 text-amber-500 font-bold rounded-xl border border-stone-700 transition-all active:scale-95"
             >
               العودة للمعبد
