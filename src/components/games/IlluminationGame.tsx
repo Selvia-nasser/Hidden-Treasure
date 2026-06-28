@@ -1,109 +1,79 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Shield, Zap, RotateCw } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
-import { motion } from 'framer-motion';
-import { Heart } from 'lucide-react';
-import { useEffect, useState } from 'react';
 
-const GRID = [
-  [1,1,1,1,1,1,1,1,1,1,1],
-  [1,2,0,0,0,0,0,0,1,0,1],
-  [1,0,1,1,1,1,1,0,1,0,1],
-  [1,0,0,0,1,0,0,0,1,0,1],
-  [1,1,1,0,1,0,1,1,1,0,1],
-  [1,0,0,0,0,0,1,0,0,0,1],
-  [1,0,1,1,1,0,1,0,1,1,1],
-  [1,0,1,0,0,0,1,0,0,0,1],
-  [1,0,1,0,1,1,1,1,1,0,1],
-  [1,0,0,0,1,0,0,0,0,0,1],
-  [1,1,1,0,1,0,1,1,0,1,1],
-  [1,0,0,0,0,0,1,0,0,1,1],
-  [1,0,1,1,1,1,1,0,1,0,1],
-  [1,0,0,0,0,0,0,0,1,0,1],
-  [1,1,1,1,1,1,1,1,1,3,1],
+// 0: مسار فارغ، 1: خط مستقيم، 2: زاوية، 3: مصدر، 4: هدف
+const INITIAL_GRID = [
+  [3, 1, 0],
+  [0, 2, 0],
+  [0, 1, 4],
 ];
 
-const SPEED = 0.12;
-
-export default function MazeGame({ onClose }: { onClose: () => void }) {
-  const { completeGame } = useGameStore();
-  const [playerPos, setPlayerPos] = useState({ col: 1.5, row: 1.5 });
-  const [joystick, setJoystick] = useState({ active: false, x: 0, y: 0 });
-  const [lives, setLives] = useState(3);
+export default function ConnectionGame({ onClose }: { onClose: () => void }) {
+  const [grid, setGrid] = useState([
+    { id: 0, type: 3, rotation: 0 }, { id: 1, type: 1, rotation: 0 }, { id: 2, type: 0, rotation: 0 },
+    { id: 3, type: 0, rotation: 0 }, { id: 4, type: 2, rotation: 90 }, { id: 5, type: 0, rotation: 0 },
+    { id: 6, type: 0, rotation: 0 }, { id: 7, type: 1, rotation: 90 }, { id: 8, type: 4, rotation: 0 },
+  ]);
   const [won, setWon] = useState(false);
+  const { completeGame } = useGameStore();
 
+  const rotatePiece = (id: number) => {
+    if (won) return;
+    const newGrid = grid.map(p => 
+      p.id === id ? { ...p, rotation: (p.rotation + 90) % 360 } : p
+    );
+    setGrid(newGrid);
+  };
+
+  // التحقق من الفوز (بسيط: يجب أن تكون الزوايا والخطوط في اتجاهات محددة)
   useEffect(() => {
-    if (!joystick.active || won) return;
+    const isSolved = 
+      grid[1].rotation === 90 && // القطعة 1
+      grid[4].rotation === 180 && // القطعة 4
+      grid[7].rotation === 0;   // القطعة 7
     
-    const interval = setInterval(() => {
-      setPlayerPos(prev => {
-        const nx = prev.col + joystick.x * SPEED;
-        const ny = prev.row + joystick.y * SPEED;
-        
-        // 1. التحقق من الوصول للمخرج (القيمة 3)
-        const cellType = GRID[Math.floor(ny)][Math.floor(nx)];
-        if (cellType === 3) {
-          setWon(true);
-          completeGame?.('illumination', 7);
-          return prev;
-        }
-
-        // 2. التحقق من الاصطدام بالحائط (القيمة 1)
-        if (cellType === 1) {
-          if (lives > 1) {
-            setLives(l => l - 1);
-            return { col: 1.5, row: 1.5 }; // إعادة للبداية
-          } else {
-            // الخسارة النهائية
-            setLives(0);
-            return { col: 1.5, row: 1.5 };
-          }
-        }
-        
-        return { col: nx, row: ny };
-      });
-    }, 16);
-    return () => clearInterval(interval);
-  }, [joystick, lives, won, completeGame]);
+    if (isSolved) {
+      setWon(true);
+      setTimeout(() => completeGame?.('illumination', 7), 1500);
+    }
+  }, [grid, completeGame]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full bg-stone-950 p-4 touch-none">
-      {/* عداد الأرواح */}
-      <div className="flex gap-2 mb-4">
-        {[...Array(3)].map((_, i) => (
-          <Heart key={i} className={i < lives ? "fill-red-500 text-red-500" : "text-stone-700"} />
-        ))}
-      </div>
-
-      <div className="relative w-[300px] h-[400px] bg-black border-2 border-stone-800 rounded-xl overflow-hidden">
-        <svg viewBox="0 0 11 15" className="w-full h-full">
-           {GRID.map((row, r) => row.map((cell, c) => {
-             if (cell === 1) return <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="#1e0f04" />;
-             if (cell === 3) return <text key={`${r}-${c}`} x={c + 0.5} y={r + 0.7} fontSize="0.8" textAnchor="middle">🛡️</text>;
-             return null;
-           }))}
-           <circle cx={playerPos.col} cy={playerPos.row} r={0.25} fill="white" />
-        </svg>
-      </div>
-
-      {/* الـ Joystick */}
-      <div 
-        className="mt-8 w-24 h-24 rounded-full bg-stone-800/50 border-4 border-stone-700 flex items-center justify-center relative"
-        onPointerDown={() => setJoystick(j => ({ ...j, active: true }))}
-        onPointerMove={(e) => {
-          if (!joystick.active) return;
-          const rect = e.currentTarget.getBoundingClientRect();
-          const dx = (e.clientX - (rect.left + rect.width / 2)) / 50;
-          const dy = (e.clientY - (rect.top + rect.height / 2)) / 50;
-          setJoystick({ active: true, x: Math.max(-1, Math.min(1, dx)), y: Math.max(-1, Math.min(1, dy)) });
-        }}
-        onPointerUp={() => setJoystick({ active: false, x: 0, y: 0 })}
-      >
-        <motion.div className="w-10 h-10 bg-amber-500 rounded-full" animate={{ x: joystick.x * 30, y: joystick.y * 30 }} />
-      </div>
-
-      {won && <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-white font-bold text-2xl">تم استعادة الدرع!</div>}
-      {lives === 0 && <div className="absolute inset-0 flex items-center justify-center bg-red-900/80 text-white font-bold text-2xl" onClick={() => {setLives(3); setPlayerPos({col: 1.5, row: 1.5})}}>خسرت... اضغط للبدء من جديد</div>}
+    <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-stone-950 text-stone-200">
+      {!won ? (
+        <div className="grid grid-cols-3 gap-3">
+          {grid.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => rotatePiece(p.id)}
+              className="w-20 h-20 bg-stone-800 rounded-xl flex items-center justify-center border-2 border-stone-700 active:scale-95 transition-all"
+            >
+              <motion.div animate={{ rotate: p.rotation }}>
+                {p.type === 3 && <Zap className="text-yellow-400" size={32} />}
+                {p.type === 4 && <Shield className="text-amber-500" size={32} />}
+                {p.type === 1 && <div className="w-12 h-2 bg-stone-500 rounded-full" />}
+                {p.type === 2 && <div className="w-10 h-10 border-t-4 border-l-4 border-stone-500 rounded-tl-xl" />}
+              </motion.div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+          className="text-center p-8 bg-stone-900 border-2 border-amber-500 rounded-3xl"
+        >
+          <Shield size={80} className="text-amber-500 mx-auto mb-4 animate-pulse" />
+          <h2 className="text-3xl font-black text-white mb-2">مبروك يا أبطال!</h2>
+          <p className="text-stone-400 mb-6">لقد وصلتم الطاقة للدرع بنجاح</p>
+          <div className="text-6xl font-black text-amber-500 mb-8">7</div>
+          <button onClick={onClose} className="px-8 py-3 bg-amber-600 rounded-xl font-bold text-white">العودة للمعبد</button>
+        </motion.div>
+      )}
+      <p className="mt-8 text-stone-600 text-sm">اضغط على القطع لتدويرها وتوصيل المسار</p>
     </div>
   );
 }
